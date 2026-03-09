@@ -637,7 +637,7 @@ function RecipeModal({ recipe, onSave, onClose }) {
           </div>
           <div>
             <label style={{ fontSize: 12, color: "var(--muted)", fontFamily: "'DM Mono', monospace", letterSpacing: "0.06em", display: "block", marginBottom: 5 }}>BASE SERVES</label>
-            <input className="input" type="number" min="1" value={form.baseServings} onChange={e => setForm(f => ({ ...f, baseServings: parseInt(e.target.value) || 2 }))} style={{ width: 80 }} />
+            <input className="input" type="text" inputMode="numeric" pattern="[0-9]*" value={form.baseServings} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, baseServings: v === "" ? "" : parseInt(v) || f.baseServings })); }} onBlur={e => { if (!e.target.value || parseInt(e.target.value) < 1) setForm(f => ({ ...f, baseServings: 1 })); }} style={{ width: 80 }} />
           </div>
         </div>
 
