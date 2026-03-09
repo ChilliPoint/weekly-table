@@ -556,7 +556,7 @@ function ShoppingView({ shoppingList, weekPlan, recipes, adjustments, onAdjust }
 function ShoppingRow({ item, adj, onAdj, effective, onCheck, checked }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, background: checked ? "var(--warm)" : "white", border: "1px solid var(--border)", borderRadius: 2, padding: "10px 14px", transition: "all 0.2s" }}>
-      <button onClick={onCheck} style={{ width: 20, height: 20, borderRadius: "50%", border: `2px solid ${checked ? "var(--green)" : "var(--border)"}`, background: checked ? "var(--green)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, cursor: "pointer", transition: "all 0.2s" }}>
+      <button onClick={onCheck} style={{ width: 20, height: 20, minWidth: 20, minHeight: 20, borderRadius: "50%", border: `2px solid ${checked ? "var(--green)" : "var(--border)"}`, background: checked ? "var(--green)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, cursor: "pointer", transition: "all 0.2s", padding: 0 }}>
         {checked && <span style={{ color: "white", fontSize: 11 }}>✓</span>}
       </button>
       <span style={{ flex: 1, fontSize: 16, textDecoration: checked ? "line-through" : "none", color: checked ? "var(--muted)" : "var(--ink)" }}>{item.name}</span>
@@ -571,7 +571,7 @@ function ShoppingRow({ item, adj, onAdj, effective, onCheck, checked }) {
           value={adj ?? ""}
           onChange={e => onAdj(e.target.value)}
           placeholder="0"
-          style={{ width: 52, border: "1px solid var(--border)", background: "var(--cream)", borderRadius: 2, padding: "4px 6px", fontSize: 13, textAlign: "right", outline: "none", fontFamily: "'DM Mono', monospace" }}
+          style={{ width: 52, border: "1px solid var(--border)", background: "var(--cream)", color: "var(--ink)", borderRadius: 2, padding: "4px 6px", fontSize: 13, textAlign: "right", outline: "none", fontFamily: "'DM Mono', monospace" }}
         />
         {item.unit && <span style={{ fontSize: 12, color: "var(--muted)", minWidth: 24 }}>{item.unit}</span>}
       </div>
