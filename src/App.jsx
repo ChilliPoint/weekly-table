@@ -212,6 +212,14 @@ export default function App() {
         @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
         .strikethrough { text-decoration: line-through; color: var(--muted); }
         ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-track { background: var(--warm); } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+        @media (max-width: 480px) {
+          .nav-btn { padding: 10px 12px; font-size: 10px; }
+          .modal-padding { padding: 20px 16px !important; }
+          .modal-outer { padding: 16px 8px !important; }
+          .ing-row { grid-template-columns: 1fr 64px 80px auto !important; gap: 5px !important; }
+          .header-title span { font-size: 18px !important; }
+          .main-padding { padding: 20px 14px !important; }
+        }
       `}</style>
 
       {/* Header */}
@@ -246,7 +254,7 @@ export default function App() {
         </div>
       </header>
 
-      <main style={{ maxWidth: 860, margin: "0 auto", padding: "32px 24px" }}>
+      <main className="main-padding" style={{ maxWidth: 860, margin: "0 auto", padding: "32px 24px" }}>
         {view === VIEWS.RECIPES && (
           <RecipesView
             recipes={recipes}
@@ -355,9 +363,9 @@ function RecipeCard({ recipe, onEdit, onDelete }) {
 
 function RecipePreviewModal({ recipe, onClose }) {
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(26,17,8,0.45)", zIndex: 200, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 16px", overflowY: "auto" }}
+    <div className="modal-outer" style={{ position: "fixed", inset: 0, background: "rgba(26,17,8,0.45)", zIndex: 200, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 16px", overflowY: "auto" }}
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="card fade-in" style={{ width: "100%", maxWidth: 620, background: "white", padding: "32px" }}>
+      <div className="card fade-in modal-padding" style={{ width: "100%", maxWidth: 620, background: "white", padding: "32px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
           <div>
             <h2 style={{ fontSize: 26, fontWeight: 600, lineHeight: 1.2 }}>{recipe.name}</h2>
@@ -613,9 +621,9 @@ function RecipeModal({ recipe, onSave, onClose }) {
   }
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(26,17,8,0.45)", zIndex: 200, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 16px", overflowY: "auto" }}
+    <div className="modal-outer" style={{ position: "fixed", inset: 0, background: "rgba(26,17,8,0.45)", zIndex: 200, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 16px", overflowY: "auto" }}
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="card fade-in" style={{ width: "100%", maxWidth: 620, background: "white", padding: "32px" }}>
+      <div className="card fade-in modal-padding" style={{ width: "100%", maxWidth: 620, background: "white", padding: "32px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
           <h2 style={{ fontSize: 24, fontWeight: 300 }}>{recipe.name ? `Edit Recipe` : `New Recipe`}</h2>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, color: "var(--muted)", cursor: "pointer", padding: "0 4px" }}>×</button>
@@ -643,8 +651,8 @@ function RecipeModal({ recipe, onSave, onClose }) {
               <button className="btn-danger" onClick={() => removeIngredient(ing.id)}>✕</button>
             </div>
           ))}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 80px 90px auto", gap: 8, marginTop: 8 }}>
-            <input className="input" placeholder="Ingredient" value={newIng.name} onChange={e => setNewIng(n => ({ ...n, name: e.target.value }))} onKeyDown={e => e.key === "Enter" && addIngredient()} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 64px 80px auto", gap: 8, marginTop: 8 }} className="ing-row">
+            <input className="input" placeholder="Ingredient name" value={newIng.name} onChange={e => setNewIng(n => ({ ...n, name: e.target.value }))} onKeyDown={e => e.key === "Enter" && addIngredient()} />
             <input className="input" placeholder="Qty" type="number" min="0" value={newIng.amount} onChange={e => setNewIng(n => ({ ...n, amount: e.target.value }))} />
             <select className="input" value={newIng.unit} onChange={e => setNewIng(n => ({ ...n, unit: e.target.value }))}>
               <option value="">unit</option>
