@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from "react";
+import { createClient } from "@supabase/supabase-js";
 
-const STORAGE_KEY = "meal-planner-shared-v1";
+const SUPABASE_URL = "https://oqtwydycvlxegiyebifn.supabase.co";
+const SUPABASE_KEY = "sb_publishable_23h2uTq8_l-Nqi1NkSKVQg_pmd4G4d1";
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const UNITS = ["g", "kg", "ml", "l", "tsp", "tbsp", "cup", "oz", "lb", "bunch", "piece", "handful", "slice", "can", "pack", ""];
 
@@ -17,10 +20,14 @@ function useStore() {
   useEffect(() => {
     async function load() {
       try {
-        const result = await window.storage.get(STORAGE_KEY, true);
-        const data = result ? JSON.parse(result.value) : { recipes: [], weekPlan: [] };
-        setState(data);
-        lastSavedRef.current = JSON.stringify(data);
+        const { data, error } = await supabase
+          .from("meal_planner")
+          .select("data")
+          .eq("id", "shared")
+          .single();
+        if (error) throw error;
+        setState(data.data);
+        lastSavedRef.current = JSON.stringify(data.data);
         setSyncStatus("saved");
       } catch {
         setState({ recipes: [], weekPlan: [] });
@@ -32,18 +39,17 @@ function useStore() {
   }, []);
 
   useEffect(() => {
-    const interval = setInterval(async () => {
-      if (!initializedRef.current) return;
-      try {
-        const result = await window.storage.get(STORAGE_KEY, true);
-        if (result && result.value !== lastSavedRef.current) {
-          const data = JSON.parse(result.value);
-          setState(data);
-          lastSavedRef.current = result.value;
+    const channel = supabase
+      .channel("meal_planner_changes")
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "meal_planner" }, payload => {
+        const remote = JSON.stringify(payload.new.data);
+        if (remote !== lastSavedRef.current) {
+          setState(payload.new.data);
+          lastSavedRef.current = remote;
         }
-      } catch {}
-    }, 15000);
-    return () => clearInterval(interval);
+      })
+      .subscribe();
+    return () => supabase.removeChannel(channel);
   }, []);
 
   function setStoreAndSave(updater) {
@@ -55,9 +61,12 @@ function useStore() {
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = setTimeout(async () => {
           try {
-            const serialized = JSON.stringify(pendingStateRef.current);
-            await window.storage.set(STORAGE_KEY, serialized, true);
-            lastSavedRef.current = serialized;
+            const { error } = await supabase
+              .from("meal_planner")
+              .update({ data: pendingStateRef.current, updated_at: new Date().toISOString() })
+              .eq("id", "shared");
+            if (error) throw error;
+            lastSavedRef.current = JSON.stringify(pendingStateRef.current);
             setSyncStatus("saved");
           } catch {
             setSyncStatus("error");
