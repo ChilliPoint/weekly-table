@@ -115,21 +115,33 @@ export default function App() {
   }
 
   function normaliseIngredient(amount, unit) {
-    // Normalise to the larger unit (g→kg, ml→l)
     if (unit === "g") return { amount: amount / 1000, unit: "kg" };
     if (unit === "ml") return { amount: amount / 1000, unit: "l" };
     return { amount, unit };
   }
 
   function formatAmount(amount, unit) {
-    // For kg and l: if under 1, display in smaller unit for readability
     if (unit === "kg" && amount < 1) return { amount: Math.round(amount * 1000 * 100) / 100, unit: "g" };
     if (unit === "l" && amount < 0.1) return { amount: Math.round(amount * 1000 * 100) / 100, unit: "ml" };
     return { amount: Math.round(amount * 1000) / 1000, unit };
   }
 
+  function stemIngredientName(name) {
+    // Normalise to lowercase and strip common plural/possessive suffixes for grouping
+    const s = name.toLowerCase().trim();
+    // Order matters: check longer suffixes first
+    if (s.endsWith("ies") && s.length > 4) return s.slice(0, -3) + "y";  // berries → berry
+    if (s.endsWith("ves") && s.length > 4) return s.slice(0, -3) + "f";  // loaves → loaf
+    if (s.endsWith("ses") && s.length > 4) return s.slice(0, -2);        // tomatoes → tomatoe (close enough for keying)
+    if (s.endsWith("es") && s.length > 4) return s.slice(0, -2);         // tomatoes, potatoes
+    if (s.endsWith("s") && s.length > 3) return s.slice(0, -1);          // sausages → sausage
+    return s;
+  }
+
   function buildShoppingList() {
     const map = {};
+    // Track the first-seen display name for each stem so the list looks natural
+    const displayNames = {};
     weekPlan.forEach(({ recipeId, servings }) => {
       const recipe = recipes.find(r => r.id === recipeId);
       if (!recipe) return;
@@ -137,15 +149,18 @@ export default function App() {
       recipe.ingredients.forEach(ing => {
         const scaled = (ing.amount || 0) * scale;
         const { amount: normAmount, unit: normUnit } = normaliseIngredient(scaled, ing.unit);
-        // Group by name + normalised unit so g and kg merge, ml and l merge
-        const key = `${ing.name.toLowerCase().trim()}__${normUnit}`;
-        if (!map[key]) map[key] = { name: ing.name, unit: normUnit, amount: 0 };
+        const stem = stemIngredientName(ing.name);
+        const key = `${stem}__${normUnit}`;
+        if (!map[key]) {
+          map[key] = { name: ing.name, unit: normUnit, amount: 0 };
+          displayNames[key] = ing.name;
+        }
         map[key].amount += normAmount;
       });
     });
-    return Object.values(map).map(item => {
+    return Object.values(map).map((item, i) => {
       const { amount, unit } = formatAmount(item.amount, item.unit);
-      return { ...item, amount, unit, key: `${item.name.toLowerCase()}__${item.unit}` };
+      return { ...item, amount, unit, key: `${stemIngredientName(item.name)}__${item.unit}` };
     });
   }
 
@@ -179,7 +194,7 @@ export default function App() {
         .btn-ghost:hover { border-color: var(--ink); color: var(--ink); }
         .btn-danger { background: none; border: none; color: #c0392b; font-size: 12px; padding: 4px 8px; border-radius: 2px; transition: background 0.2s; font-family: 'DM Mono', monospace; }
         .btn-danger:hover { background: #fdecea; }
-        .input { border: 1px solid var(--border); background: var(--cream); padding: 9px 13px; font-size: 15px; border-radius: 2px; width: 100%; outline: none; transition: border-color 0.2s; }
+        .input { border: 1px solid var(--border); background: var(--cream); color: var(--ink); padding: 9px 13px; font-size: 15px; border-radius: 2px; width: 100%; outline: none; transition: border-color 0.2s; }
         .input:focus { border-color: var(--accent); }
         .tag { display: inline-block; background: var(--accent-light); color: var(--accent); font-size: 11px; padding: 3px 9px; border-radius: 20px; font-family: 'DM Mono', monospace; letter-spacing: 0.04em; }
         .spinner { border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; width: 18px; height: 18px; animation: spin 0.7s linear infinite; display: inline-block; }
@@ -318,15 +333,82 @@ function RecipeCard({ recipe, onEdit, onDelete }) {
           {recipe.ingredients.slice(0, 4).map(i => i.name).join(", ")}{recipe.ingredients.length > 4 ? `…` : ""}
         </p>
       )}
-      <div style={{ marginTop: 16, display: "flex", gap: 8, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+      <div style={{ marginTop: 16, display: "flex", gap: 8, borderTop: "1px solid var(--border)", paddingTop: 12, alignItems: "center" }}>
         <button className="btn-ghost" style={{ fontSize: 12 }} onClick={onEdit}>Edit</button>
         <button className="btn-danger" onClick={onDelete}>Delete</button>
+        {recipe.url && (() => { try { new URL(recipe.url); return true; } catch { return false; } })() && (
+          <a href={recipe.url} target="_blank" rel="noopener noreferrer" style={{ marginLeft: "auto", fontSize: 12, color: "var(--accent)", textDecoration: "underline", fontFamily: "'DM Mono', monospace" }}>Recipe ↗</a>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RecipePreviewModal({ recipe, onClose }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(26,17,8,0.45)", zIndex: 200, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 16px", overflowY: "auto" }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="card fade-in" style={{ width: "100%", maxWidth: 620, background: "white", padding: "32px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+          <div>
+            <h2 style={{ fontSize: 26, fontWeight: 600, lineHeight: 1.2 }}>{recipe.name}</h2>
+            <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+              <span className="tag">serves {recipe.baseServings || 2}</span>
+              <span className="tag" style={{ background: "var(--green-light)", color: "var(--green)" }}>{recipe.ingredients?.length || 0} ingredients</span>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, color: "var(--muted)", cursor: "pointer", padding: "0 4px", flexShrink: 0 }}>×</button>
+        </div>
+
+        {recipe.ingredients?.length > 0 && (
+          <div style={{ marginBottom: 24 }}>
+            <p style={{ fontSize: 12, color: "var(--muted)", fontFamily: "'DM Mono', monospace", letterSpacing: "0.06em", marginBottom: 10 }}>INGREDIENTS</p>
+            {recipe.ingredients.map(ing => (
+              <div key={ing.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderBottom: "1px solid var(--border)", fontSize: 15 }}>
+                <span>{ing.name}</span>
+                <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, color: "var(--accent)" }}>{ing.amount || ""}{ing.unit ? ` ${ing.unit}` : ""}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {recipe.steps?.length > 0 && (
+          <div style={{ marginBottom: 24 }}>
+            <p style={{ fontSize: 12, color: "var(--muted)", fontFamily: "'DM Mono', monospace", letterSpacing: "0.06em", marginBottom: 10 }}>METHOD</p>
+            {recipe.steps.map((step, i) => (
+              <div key={step.id} style={{ display: "flex", gap: 12, marginBottom: 12, alignItems: "flex-start" }}>
+                <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: "var(--accent)", minWidth: 22, paddingTop: 2, flexShrink: 0 }}>{i + 1}.</span>
+                <p style={{ fontSize: 15, lineHeight: 1.6, color: "var(--ink)" }}>{step.text}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {recipe.url && (() => { try { new URL(recipe.url); return true; } catch { return false; } })() && (
+          <div style={{ paddingTop: 16, borderTop: "1px solid var(--border)" }}>
+            <a href={recipe.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 14, color: "var(--accent)", textDecoration: "underline", fontFamily: "'DM Mono', monospace" }}>View original recipe ↗</a>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 function PlannerView({ recipes, weekPlan, onToggle, onServings, onGoShopping }) {
+  const [search, setSearch] = useState("");
+  const [previewRecipe, setPreviewRecipe] = useState(null);
+
+  // Sort: selected recipes first, then alphabetically within each group
+  const sorted = [...recipes].sort((a, b) => {
+    const aPlanned = !!weekPlan.find(p => p.recipeId === a.id);
+    const bPlanned = !!weekPlan.find(p => p.recipeId === b.id);
+    if (aPlanned && !bPlanned) return -1;
+    if (!aPlanned && bPlanned) return 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  const filtered = sorted.filter(r => r.name.toLowerCase().includes(search.toLowerCase()));
+
   return (
     <div className="fade-in">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 24 }}>
@@ -345,33 +427,49 @@ function PlannerView({ recipes, weekPlan, onToggle, onServings, onGoShopping }) 
         </div>
       )}
 
+      {recipes.length > 0 && (
+        <input className="input" placeholder="Search recipes…" value={search} onChange={e => setSearch(e.target.value)} style={{ marginBottom: 16, maxWidth: 360 }} />
+      )}
+
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {recipes.map(recipe => {
+        {filtered.map(recipe => {
           const planned = weekPlan.find(p => p.recipeId === recipe.id);
           return (
             <div key={recipe.id} className="card" style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 14, background: planned ? "var(--accent-light)" : "white", borderColor: planned ? "var(--accent)" : "var(--border)", transition: "all 0.2s" }}>
               <button
                 onClick={() => onToggle(recipe.id)}
-                style={{ width: 22, height: 22, borderRadius: "50%", border: `2px solid ${planned ? "var(--accent)" : "var(--border)"}`, background: planned ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s", flexShrink: 0 }}
+                style={{ width: 22, height: 22, minWidth: 22, minHeight: 22, borderRadius: "50%", border: `2px solid ${planned ? "var(--accent)" : "var(--border)"}`, background: planned ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s", flexShrink: 0, padding: 0 }}
               >
                 {planned && <span style={{ color: "white", fontSize: 12 }}>✓</span>}
               </button>
-              <div style={{ flex: 1 }}>
-                <span style={{ fontSize: 17, fontWeight: planned ? 600 : 400 }}>{recipe.name}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <button
+                  onClick={() => setPreviewRecipe(recipe)}
+                  style={{ background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontSize: 17, fontWeight: planned ? 600 : 400, fontFamily: "inherit", color: "var(--ink)" }}
+                >
+                  {recipe.name}
+                </button>
                 <span style={{ marginLeft: 10, fontSize: 13, color: "var(--muted)" }}>{recipe.ingredients?.length} ingredients</span>
               </div>
               {planned && (
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 12, color: "var(--muted)", fontFamily: "'DM Mono', monospace" }}>SERVES</span>
-                  <button style={{ background: "none", border: "1px solid var(--border)", width: 26, height: 26, borderRadius: "50%", color: "var(--ink)", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }} onClick={() => onServings(recipe.id, planned.servings - 1)}>−</button>
+                  <button style={{ background: "none", border: "1px solid var(--border)", width: 26, height: 26, minWidth: 26, minHeight: 26, borderRadius: "50%", color: "var(--ink)", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0 }} onClick={() => onServings(recipe.id, planned.servings - 1)}>−</button>
                   <span style={{ fontSize: 16, fontWeight: 600, minWidth: 20, textAlign: "center" }}>{planned.servings}</span>
-                  <button style={{ background: "none", border: "1px solid var(--border)", width: 26, height: 26, borderRadius: "50%", color: "var(--ink)", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }} onClick={() => onServings(recipe.id, planned.servings + 1)}>+</button>
+                  <button style={{ background: "none", border: "1px solid var(--border)", width: 26, height: 26, minWidth: 26, minHeight: 26, borderRadius: "50%", color: "var(--ink)", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0 }} onClick={() => onServings(recipe.id, planned.servings + 1)}>+</button>
                 </div>
               )}
             </div>
           );
         })}
+        {filtered.length === 0 && recipes.length > 0 && (
+          <p style={{ color: "var(--muted)", padding: "20px 0" }}>No recipes match your search</p>
+        )}
       </div>
+
+      {previewRecipe && (
+        <RecipePreviewModal recipe={previewRecipe} onClose={() => setPreviewRecipe(null)} />
+      )}
     </div>
   );
 }
@@ -561,6 +659,20 @@ function RecipeModal({ recipe, onSave, onClose }) {
             <textarea className="input" placeholder="Describe the next step…" value={newStep} onChange={e => setNewStep(e.target.value)} rows={2} style={{ resize: "vertical" }} onKeyDown={e => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), addStep())} />
             <button className="btn-primary" onClick={addStep}>Add</button>
           </div>
+        </div>
+
+        {/* URL */}
+        <div style={{ marginBottom: 28 }}>
+          <label style={{ fontSize: 12, color: "var(--muted)", fontFamily: "'DM Mono', monospace", letterSpacing: "0.06em", display: "block", marginBottom: 5 }}>SOURCE URL <span style={{ fontWeight: 300, textTransform: "none", letterSpacing: 0 }}>(optional)</span></label>
+          <input
+            className="input"
+            placeholder="e.g. https://www.bbcgoodfood.com/recipes/..."
+            value={form.url || ""}
+            onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
+          />
+          {form.url && (() => { try { new URL(form.url); return true; } catch { return false; } })() && (
+            <a href={form.url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", marginTop: 6, fontSize: 13, color: "var(--accent)", textDecoration: "underline" }}>Open link ↗</a>
+          )}
         </div>
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
