@@ -87,7 +87,7 @@ export default function App() {
   const [shoppingAdjustments, setShoppingAdjustments] = useState({});
 
   const recipes = store.recipes || [];
-  const weekPlan = store.weekPlan || [];
+  const calendarPlan = store.calendarPlan || {}; // { "Mon-breakfast": { recipeId, servings }, ... }
 
   function upsertRecipe(recipe) {
     setStore(s => {
@@ -101,25 +101,34 @@ export default function App() {
   }
 
   function deleteRecipe(id) {
-    setStore(s => ({
-      ...s,
-      recipes: s.recipes.filter(r => r.id !== id),
-      weekPlan: s.weekPlan.filter(p => p.recipeId !== id)
-    }));
-  }
-
-  function toggleWeekPlan(recipeId) {
     setStore(s => {
-      const exists = s.weekPlan.find(p => p.recipeId === recipeId);
-      if (exists) return { ...s, weekPlan: s.weekPlan.filter(p => p.recipeId !== recipeId) };
-      return { ...s, weekPlan: [...s.weekPlan, { recipeId, servings: 2 }] };
+      const newCalendar = { ...s.calendarPlan };
+      Object.keys(newCalendar).forEach(k => { if (newCalendar[k]?.recipeId === id) delete newCalendar[k]; });
+      return { ...s, recipes: s.recipes.filter(r => r.id !== id), calendarPlan: newCalendar };
     });
   }
 
-  function updateServings(recipeId, servings) {
+  function setCalendarSlot(slotKey, recipeId) {
+    setStore(s => {
+      const newCalendar = { ...s.calendarPlan };
+      if (!recipeId) { delete newCalendar[slotKey]; }
+      else { newCalendar[slotKey] = { recipeId, servings: 2 }; }
+      return { ...s, calendarPlan: newCalendar };
+    });
+  }
+
+  function clearCalendarSlots(slotKeys) {
+    setStore(s => {
+      const newCalendar = { ...s.calendarPlan };
+      slotKeys.forEach(k => delete newCalendar[k]);
+      return { ...s, calendarPlan: newCalendar };
+    });
+  }
+
+  function updateCalendarServings(slotKey, servings) {
     setStore(s => ({
       ...s,
-      weekPlan: s.weekPlan.map(p => p.recipeId === recipeId ? { ...p, servings: Math.max(1, servings) } : p)
+      calendarPlan: { ...s.calendarPlan, [slotKey]: { ...s.calendarPlan[slotKey], servings: Math.max(1, servings) } }
     }));
   }
 
@@ -136,22 +145,18 @@ export default function App() {
   }
 
   function stemIngredientName(name) {
-    // Normalise to lowercase and strip common plural/possessive suffixes for grouping
     const s = name.toLowerCase().trim();
-    // Order matters: check longer suffixes first
-    if (s.endsWith("ies") && s.length > 4) return s.slice(0, -3) + "y";  // berries → berry
-    if (s.endsWith("ves") && s.length > 4) return s.slice(0, -3) + "f";  // loaves → loaf
-    if (s.endsWith("ses") && s.length > 4) return s.slice(0, -2);        // tomatoes → tomatoe (close enough for keying)
-    if (s.endsWith("es") && s.length > 4) return s.slice(0, -2);         // tomatoes, potatoes
-    if (s.endsWith("s") && s.length > 3) return s.slice(0, -1);          // sausages → sausage
+    if (s.endsWith("ies") && s.length > 4) return s.slice(0, -3) + "y";
+    if (s.endsWith("ves") && s.length > 4) return s.slice(0, -3) + "f";
+    if (s.endsWith("ses") && s.length > 4) return s.slice(0, -2);
+    if (s.endsWith("es") && s.length > 4) return s.slice(0, -2);
+    if (s.endsWith("s") && s.length > 3) return s.slice(0, -1);
     return s;
   }
 
   function buildShoppingList() {
     const map = {};
-    // Track the first-seen display name for each stem so the list looks natural
-    const displayNames = {};
-    weekPlan.forEach(({ recipeId, servings }) => {
+    Object.values(calendarPlan).forEach(({ recipeId, servings }) => {
       const recipe = recipes.find(r => r.id === recipeId);
       if (!recipe) return;
       const scale = servings / (recipe.baseServings || 2);
@@ -160,20 +165,18 @@ export default function App() {
         const { amount: normAmount, unit: normUnit } = normaliseIngredient(scaled, ing.unit);
         const stem = stemIngredientName(ing.name);
         const key = `${stem}__${normUnit}`;
-        if (!map[key]) {
-          map[key] = { name: ing.name, unit: normUnit, amount: 0 };
-          displayNames[key] = ing.name;
-        }
+        if (!map[key]) map[key] = { name: ing.name, unit: normUnit, amount: 0 };
         map[key].amount += normAmount;
       });
     });
-    return Object.values(map).map((item, i) => {
+    return Object.values(map).map(item => {
       const { amount, unit } = formatAmount(item.amount, item.unit);
       return { ...item, amount, unit, key: `${stemIngredientName(item.name)}__${item.unit}` };
     });
   }
 
   const shoppingList = buildShoppingList();
+  const totalMealsPlanned = Object.keys(calendarPlan).length;
 
   return (
     <div style={{ fontFamily: "'Crimson Pro', 'Georgia', serif", minHeight: "100vh", background: "#faf7f2", color: "#1a1108" }}>
@@ -212,12 +215,15 @@ export default function App() {
         @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
         .strikethrough { text-decoration: line-through; color: var(--muted); }
         ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-track { background: var(--warm); } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
-        @media (max-width: 480px) {
+        .mobile-only { display: none !important; }
+        .desktop-only { display: block !important; }
+        @media (max-width: 700px) {
+          .mobile-only { display: block !important; }
+          .desktop-only { display: none !important; }
           .nav-btn { padding: 10px 12px; font-size: 10px; }
           .modal-padding { padding: 20px 16px !important; }
           .modal-outer { padding: 16px 8px !important; }
           .ing-row { grid-template-columns: 1fr 64px 80px auto !important; gap: 5px !important; }
-          .header-title span { font-size: 18px !important; }
           .main-padding { padding: 20px 14px !important; }
         }
       `}</style>
@@ -245,8 +251,8 @@ export default function App() {
             ].map(({ key, label }) => (
               <button key={key} className={`nav-btn ${view === key ? "active" : ""}`} onClick={() => setView(key)}>
                 {label}
-                {key === VIEWS.PLANNER && weekPlan.length > 0 && (
-                  <span style={{ marginLeft: 5, background: "var(--accent)", color: "white", borderRadius: "50%", width: 16, height: 16, fontSize: 10, display: "inline-flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Mono', monospace" }}>{weekPlan.length}</span>
+                {key === VIEWS.PLANNER && totalMealsPlanned > 0 && (
+                  <span style={{ marginLeft: 5, background: "var(--accent)", color: "white", borderRadius: "50%", width: 16, height: 16, fontSize: 10, display: "inline-flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Mono', monospace" }}>{totalMealsPlanned}</span>
                 )}
               </button>
             ))}
@@ -266,16 +272,17 @@ export default function App() {
         {view === VIEWS.PLANNER && (
           <PlannerView
             recipes={recipes}
-            weekPlan={weekPlan}
-            onToggle={toggleWeekPlan}
-            onServings={updateServings}
+            calendarPlan={calendarPlan}
+            onSetSlot={setCalendarSlot}
+            onClearSlots={clearCalendarSlots}
+            onServings={updateCalendarServings}
             onGoShopping={() => setView(VIEWS.SHOPPING)}
           />
         )}
         {view === VIEWS.SHOPPING && (
           <ShoppingView
             shoppingList={shoppingList}
-            weekPlan={weekPlan}
+            calendarPlan={calendarPlan}
             recipes={recipes}
             adjustments={shoppingAdjustments}
             onAdjust={setShoppingAdjustments}
@@ -411,31 +418,176 @@ function RecipePreviewModal({ recipe, onClose }) {
   );
 }
 
-function PlannerView({ recipes, weekPlan, onToggle, onServings, onGoShopping }) {
+
+const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const MEALS = ["Breakfast", "Lunch", "Dinner"];
+
+function slotKey(day, meal) { return `${day}-${meal.toLowerCase()}`; }
+
+function RecipePickerModal({ recipes, onSelect, onClose }) {
   const [search, setSearch] = useState("");
+  const [preview, setPreview] = useState(null);
+  const filtered = recipes.filter(r => r.name.toLowerCase().includes(search.toLowerCase()));
+  const inputRef = useRef();
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  if (preview) {
+    return (
+      <div className="modal-outer" style={{ position: "fixed", inset: 0, background: "rgba(26,17,8,0.45)", zIndex: 300, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 16px", overflowY: "auto" }}
+        onClick={e => e.target === e.currentTarget && onClose()}>
+        <div className="card fade-in modal-padding" style={{ width: "100%", maxWidth: 560, background: "white", padding: "28px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+            <div>
+              <button onClick={() => setPreview(null)} style={{ background: "none", border: "none", color: "var(--accent)", fontSize: 13, fontFamily: "'DM Mono', monospace", cursor: "pointer", padding: 0, marginBottom: 8, display: "block" }}>← Back</button>
+              <h2 style={{ fontSize: 22, fontWeight: 600 }}>{preview.name}</h2>
+            </div>
+            <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, color: "var(--muted)", cursor: "pointer", padding: "0 4px" }}>×</button>
+          </div>
+          {preview.ingredients?.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <p style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'DM Mono', monospace", letterSpacing: "0.06em", marginBottom: 8 }}>INGREDIENTS</p>
+              {preview.ingredients.map(ing => (
+                <div key={ing.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--border)", fontSize: 14 }}>
+                  <span>{ing.name}</span>
+                  <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: "var(--accent)" }}>{ing.amount || ""}{ing.unit ? ` ${ing.unit}` : ""}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {preview.steps?.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <p style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'DM Mono', monospace", letterSpacing: "0.06em", marginBottom: 8 }}>METHOD</p>
+              {preview.steps.map((step, i) => (
+                <div key={step.id} style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+                  <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: "var(--accent)", minWidth: 18, flexShrink: 0 }}>{i + 1}.</span>
+                  <p style={{ fontSize: 14, lineHeight: 1.5 }}>{step.text}</p>
+                </div>
+              ))}
+            </div>
+          )}
+          <button className="btn-primary" style={{ width: "100%" }} onClick={() => onSelect(preview.id)}>Add to plan</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="modal-outer" style={{ position: "fixed", inset: 0, background: "rgba(26,17,8,0.45)", zIndex: 300, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 16px", overflowY: "auto" }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="card fade-in modal-padding" style={{ width: "100%", maxWidth: 480, background: "white", padding: "28px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 300 }}>Pick a <em>recipe</em></h2>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, color: "var(--muted)", cursor: "pointer", padding: "0 4px" }}>×</button>
+        </div>
+        <input ref={inputRef} className="input" placeholder="Search recipes…" value={search} onChange={e => setSearch(e.target.value)} style={{ marginBottom: 12 }} />
+        {filtered.length === 0 && <p style={{ color: "var(--muted)", fontSize: 14, padding: "12px 0" }}>No recipes match your search</p>}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 340, overflowY: "auto" }}>
+          {filtered.map(r => (
+            <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", border: "1px solid var(--border)", borderRadius: 2, padding: "10px 12px", background: "var(--cream)" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: 15, fontWeight: 500 }}>{r.name}</p>
+                <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>{r.ingredients?.length || 0} ingredients · serves {r.baseServings || 2}</p>
+              </div>
+              <div style={{ display: "flex", gap: 8, marginLeft: 10 }}>
+                <button className="btn-ghost" style={{ fontSize: 12, padding: "5px 10px" }} onClick={() => setPreview(r)}>View</button>
+                <button className="btn-primary" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => onSelect(r.id)}>Add</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Full week day order for cycling
+const ALL_WEEK_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+// Given the current extra days prepended, what's the next day to add before Monday?
+// Goes: Sunday, Saturday, Friday, Thursday...
+function prevDayName(extrasBefore) {
+  // extrasBefore is an array of day keys already prepended, newest first
+  const baseIdx = 6; // Sunday = index 6 in ALL_WEEK_DAYS
+  const next = baseIdx - extrasBefore.length;
+  if (next < 0) return ALL_WEEK_DAYS[((next % 7) + 7) % 7];
+  return ALL_WEEK_DAYS[next];
+}
+
+// After Sunday, goes: Monday, Tuesday, Wednesday...
+function nextDayName(extrasAfter) {
+  const baseIdx = 0; // Monday = index 0
+  return ALL_WEEK_DAYS[(baseIdx + extrasAfter.length) % 7];
+}
+
+function PlannerView({ recipes, calendarPlan, onSetSlot, onClearSlots, onServings, onGoShopping }) {
+  const [picker, setPicker] = useState(null);
   const [previewRecipe, setPreviewRecipe] = useState(null);
+  const [extrasBefore, setExtrasBefore] = useState([]);
+  const [extrasAfter, setExtrasAfter] = useState([]);
+  const totalMeals = Object.keys(calendarPlan).length;
 
-  // Sort: selected recipes first, then alphabetically within each group
-  const sorted = [...recipes].sort((a, b) => {
-    const aPlanned = !!weekPlan.find(p => p.recipeId === a.id);
-    const bPlanned = !!weekPlan.find(p => p.recipeId === b.id);
-    if (aPlanned && !bPlanned) return -1;
-    if (!aPlanned && bPlanned) return 1;
-    return a.name.localeCompare(b.name);
-  });
+  const allDays = [...extrasBefore, ...DAYS, ...extrasAfter];
 
-  const filtered = sorted.filter(r => r.name.toLowerCase().includes(search.toLowerCase()));
+  function addDayBefore() {
+    const name = prevDayName(extrasBefore);
+    const key = `before-${extrasBefore.length}-${name}`;
+    setExtrasBefore(prev => [key, ...prev]);
+  }
+
+  function addDayAfter() {
+    const name = nextDayName(extrasAfter);
+    const key = `after-${extrasAfter.length}-${name}`;
+    setExtrasAfter(prev => [...prev, key]);
+  }
+
+  function removeDayBefore() {
+    const key = extrasBefore[0];
+    onClearSlots(MEALS.map(meal => slotKey(key, meal)));
+    setExtrasBefore(prev => prev.slice(1));
+  }
+
+  function removeDayAfter() {
+    const key = extrasAfter[extrasAfter.length - 1];
+    onClearSlots(MEALS.map(meal => slotKey(key, meal)));
+    setExtrasAfter(prev => prev.slice(0, -1));
+  }
+
+  function clearAll() {
+    // Wipe every slot in the store — core week and any lingering extra day slots
+    onClearSlots(Object.keys(calendarPlan));
+    setExtrasBefore([]);
+    setExtrasAfter([]);
+  }
+
+  function displayName(dayKey) {
+    const parts = dayKey.split("-");
+    return parts[parts.length - 1];
+  }
+
+  function handleSelect(recipeId) {
+    onSetSlot(slotKey(picker.day, picker.meal), recipeId);
+    setPicker(null);
+  }
+
+  const addDayBtn = (onClick, label) => (
+    <button onClick={onClick} style={{ background: "none", border: "1px dashed var(--border)", borderRadius: 2, padding: "8px 14px", fontSize: 12, color: "var(--muted)", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>+ {label}</button>
+  );
 
   return (
     <div className="fade-in">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 24 }}>
         <div>
           <h1 style={{ fontSize: 32, fontWeight: 300 }}>This <em>Week</em></h1>
-          <p style={{ color: "var(--muted)", marginTop: 6, fontSize: 15 }}>Select the meals you're cooking this week</p>
+          <p style={{ color: "var(--muted)", marginTop: 6, fontSize: 15 }}>Plan your meals for the week</p>
         </div>
-        {weekPlan.length > 0 && (
-          <button className="btn-primary" onClick={onGoShopping}>View Shopping List →</button>
-        )}
+        <div style={{ display: "flex", gap: 8 }}>
+          {totalMeals > 0 && (
+            <button className="btn-ghost" onClick={clearAll}>Clear</button>
+          )}
+          {totalMeals > 0 && (
+            <button className="btn-primary" onClick={onGoShopping}>Shopping List →</button>
+          )}
+        </div>
       </div>
 
       {recipes.length === 0 && (
@@ -444,46 +596,61 @@ function PlannerView({ recipes, weekPlan, onToggle, onServings, onGoShopping }) 
         </div>
       )}
 
-      {recipes.length > 0 && (
-        <input className="input" placeholder="Search recipes…" value={search} onChange={e => setSearch(e.target.value)} style={{ marginBottom: 16, maxWidth: 360 }} />
+      {recipes.length > 0 && (<>
+        {/* Mobile: stacked vertically */}
+        <div className="mobile-only" style={{ display: "none" }}>
+          <div style={{ marginBottom: 8 }}>{addDayBtn(addDayBefore, `Add Day (${prevDayName(extrasBefore)})`)}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {allDays.map((day, idx) => {
+              const isExtraBefore = idx < extrasBefore.length;
+              const isExtraAfter = idx >= extrasBefore.length + DAYS.length;
+              const isNewestBefore = day === extrasBefore[0];
+              const isNewestAfter = day === extrasAfter[extrasAfter.length - 1];
+              return (
+                <DayCard key={day} dayKey={day} displayDay={DAYS.includes(day) ? day : displayName(day)}
+                  calendarPlan={calendarPlan} recipes={recipes} onSetSlot={onSetSlot} onServings={onServings}
+                  onOpenPicker={(d, meal) => setPicker({ day: d, meal })} onPreview={setPreviewRecipe} mobile={true}
+                  isExtra={isExtraBefore || isExtraAfter}
+                  canRemove={isNewestBefore || isNewestAfter}
+                  onRemove={isNewestBefore ? removeDayBefore : removeDayAfter}
+                />
+              );
+            })}
+          </div>
+          <div style={{ marginTop: 8 }}>{addDayBtn(addDayAfter, `Add Day (${nextDayName(extrasAfter)})`)}</div>
+        </div>
+
+        {/* Desktop: grid */}
+        <div className="desktop-only">
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            {addDayBtn(addDayBefore, `Add Day (${prevDayName(extrasBefore)})`)}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${allDays.length}, 1fr)`, gap: 8 }}>
+            {allDays.map((day, idx) => {
+              const isExtraBefore = idx < extrasBefore.length;
+              const isExtraAfter = idx >= extrasBefore.length + DAYS.length;
+              const isNewestBefore = day === extrasBefore[0];
+              const isNewestAfter = day === extrasAfter[extrasAfter.length - 1];
+              return (
+                <DayCard key={day} dayKey={day} displayDay={DAYS.includes(day) ? day : displayName(day)}
+                  calendarPlan={calendarPlan} recipes={recipes} onSetSlot={onSetSlot} onServings={onServings}
+                  onOpenPicker={(d, meal) => setPicker({ day: d, meal })} onPreview={setPreviewRecipe} mobile={false}
+                  isExtra={isExtraBefore || isExtraAfter}
+                  canRemove={isNewestBefore || isNewestAfter}
+                  onRemove={isNewestBefore ? removeDayBefore : removeDayAfter}
+                />
+              );
+            })}
+          </div>
+          <div style={{ marginTop: 8 }}>
+            {addDayBtn(addDayAfter, `Add Day (${nextDayName(extrasAfter)})`)}
+          </div>
+        </div>
+      </>)}
+
+      {picker && (
+        <RecipePickerModal recipes={recipes} onSelect={handleSelect} onClose={() => setPicker(null)} />
       )}
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {filtered.map(recipe => {
-          const planned = weekPlan.find(p => p.recipeId === recipe.id);
-          return (
-            <div key={recipe.id} className="card" style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 14, background: planned ? "var(--accent-light)" : "white", borderColor: planned ? "var(--accent)" : "var(--border)", transition: "all 0.2s" }}>
-              <button
-                onClick={() => onToggle(recipe.id)}
-                style={{ width: 22, height: 22, minWidth: 22, minHeight: 22, borderRadius: "50%", border: `2px solid ${planned ? "var(--accent)" : "var(--border)"}`, background: planned ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s", flexShrink: 0, padding: 0 }}
-              >
-                {planned && <span style={{ color: "white", fontSize: 12 }}>✓</span>}
-              </button>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <button
-                  onClick={() => setPreviewRecipe(recipe)}
-                  style={{ background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontSize: 17, fontWeight: planned ? 600 : 400, fontFamily: "inherit", color: "var(--ink)" }}
-                >
-                  {recipe.name}
-                </button>
-                <span style={{ marginLeft: 10, fontSize: 13, color: "var(--muted)" }}>{recipe.ingredients?.length} ingredients</span>
-              </div>
-              {planned && (
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 12, color: "var(--muted)", fontFamily: "'DM Mono', monospace" }}>SERVES</span>
-                  <button style={{ background: "none", border: "1px solid var(--border)", width: 26, height: 26, minWidth: 26, minHeight: 26, borderRadius: "50%", color: "var(--ink)", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0 }} onClick={() => onServings(recipe.id, planned.servings - 1)}>−</button>
-                  <span style={{ fontSize: 16, fontWeight: 600, minWidth: 20, textAlign: "center" }}>{planned.servings}</span>
-                  <button style={{ background: "none", border: "1px solid var(--border)", width: 26, height: 26, minWidth: 26, minHeight: 26, borderRadius: "50%", color: "var(--ink)", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0 }} onClick={() => onServings(recipe.id, planned.servings + 1)}>+</button>
-                </div>
-              )}
-            </div>
-          );
-        })}
-        {filtered.length === 0 && recipes.length > 0 && (
-          <p style={{ color: "var(--muted)", padding: "20px 0" }}>No recipes match your search</p>
-        )}
-      </div>
-
       {previewRecipe && (
         <RecipePreviewModal recipe={previewRecipe} onClose={() => setPreviewRecipe(null)} />
       )}
@@ -491,7 +658,49 @@ function PlannerView({ recipes, weekPlan, onToggle, onServings, onGoShopping }) 
   );
 }
 
-function ShoppingView({ shoppingList, weekPlan, recipes, adjustments, onAdjust }) {
+function DayCard({ dayKey, displayDay, calendarPlan, recipes, onSetSlot, onServings, onOpenPicker, onPreview, mobile, isExtra, canRemove, onRemove }) {
+  return (
+    <div style={{ background: "white", border: "1px solid var(--border)", borderRadius: 2, overflow: "hidden" }}>
+      <div style={{ background: "var(--warm)", padding: "8px 12px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <p style={{ fontSize: 11, fontFamily: "'DM Mono', monospace", color: "var(--ink)", letterSpacing: "0.06em", fontWeight: 500 }}>{displayDay.toUpperCase()}</p>
+        {isExtra && canRemove && (
+          <button onClick={onRemove} style={{ background: "none", border: "none", color: "#c0392b", fontSize: 11, cursor: "pointer", fontFamily: "'DM Mono', monospace", padding: 0 }}>✕ Remove</button>
+        )}
+      </div>
+      <div style={{ display: mobile ? "grid" : "flex", gridTemplateColumns: mobile ? "repeat(3, 1fr)" : undefined, flexDirection: mobile ? undefined : "column" }}>
+        {MEALS.map((meal, i) => {
+          const key = slotKey(dayKey, meal);
+          const slot = calendarPlan[key];
+          const recipe = slot ? recipes.find(r => r.id === slot.recipeId) : null;
+          const borderStyle = mobile
+            ? { borderRight: i < MEALS.length - 1 ? "1px solid var(--border)" : "none" }
+            : { borderBottom: i < MEALS.length - 1 ? "1px solid var(--border)" : "none" };
+          return (
+            <div key={meal} style={{ padding: "8px 10px", minHeight: mobile ? 80 : 64, ...borderStyle }}>
+              <p style={{ fontSize: 10, fontFamily: "'DM Mono', monospace", color: "var(--muted)", letterSpacing: "0.05em", marginBottom: 4 }}>{meal.toUpperCase()}</p>
+              {recipe ? (
+                <div>
+                  <button onClick={() => onPreview(recipe)} style={{ background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "var(--ink)", fontFamily: "inherit", lineHeight: 1.3, display: "block", width: "100%" }}>{recipe.name}</button>
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 5, flexWrap: "wrap" }}>
+                    <button style={{ background: "none", border: "1px solid var(--border)", width: 20, height: 20, minWidth: 20, minHeight: 20, borderRadius: "50%", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0, color: "var(--ink)" }} onClick={() => onServings(key, slot.servings - 1)}>−</button>
+                    <span style={{ fontSize: 12, fontFamily: "'DM Mono', monospace", minWidth: 16, textAlign: "center" }}>{slot.servings}</span>
+                    <button style={{ background: "none", border: "1px solid var(--border)", width: 20, height: 20, minWidth: 20, minHeight: 20, borderRadius: "50%", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0, color: "var(--ink)" }} onClick={() => onServings(key, slot.servings + 1)}>+</button>
+                    <button onClick={() => onSetSlot(key, null)} style={{ background: "none", border: "none", color: "#c0392b", fontSize: 11, padding: "0 2px", cursor: "pointer", marginLeft: "auto", fontFamily: "'DM Mono', monospace" }}>✕</button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => onOpenPicker(dayKey, meal)} style={{ background: "none", border: "1px dashed var(--border)", borderRadius: 2, width: "100%", padding: "6px 8px", fontSize: 12, color: "var(--muted)", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>+ Add</button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+
+function ShoppingView({ shoppingList, calendarPlan, recipes, adjustments, onAdjust }) {
   const [checked, setChecked] = useState({});
 
   function toggleChecked(key) {
@@ -512,19 +721,21 @@ function ShoppingView({ shoppingList, weekPlan, recipes, adjustments, onAdjust }
     return Math.max(0, Math.round((item.amount - have) * 100) / 100);
   }
 
-  if (weekPlan.length === 0) {
+  const totalMeals = Object.keys(calendarPlan).length;
+
+  if (totalMeals === 0) {
     return (
       <div className="fade-in" style={{ textAlign: "center", padding: "80px 0", color: "var(--muted)" }}>
         <div style={{ fontSize: 48, marginBottom: 12 }}>🛒</div>
         <p style={{ fontSize: 18, fontWeight: 300 }}>No meals planned yet</p>
-        <p style={{ fontSize: 14, marginTop: 6 }}>Head to "This Week" to pick your meals</p>
+        <p style={{ fontSize: 14, marginTop: 6 }}>Head to "This Week" to plan your meals</p>
       </div>
     );
   }
 
-  const planned = weekPlan.map(p => {
-    const r = recipes.find(r => r.id === p.recipeId);
-    return r ? `${r.name} ×${p.servings}` : null;
+  const planned = Object.entries(calendarPlan).map(([key, { recipeId, servings }]) => {
+    const r = recipes.find(r => r.id === recipeId);
+    return r ? `${r.name} ×${servings}` : null;
   }).filter(Boolean);
 
   return (
