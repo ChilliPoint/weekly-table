@@ -220,17 +220,19 @@ export default function App() {
         @media (max-width: 700px) {
           .mobile-only { display: block !important; }
           .desktop-only { display: none !important; }
-          .nav-btn { padding: 10px 12px; font-size: 10px; }
+          .nav-btn { padding: 10px 8px; font-size: 10px; }
           .modal-padding { padding: 20px 16px !important; }
           .modal-outer { padding: 16px 8px !important; }
           .ing-row { grid-template-columns: 1fr 64px 80px auto !important; gap: 5px !important; }
           .main-padding { padding: 20px 14px !important; }
+          input, select, textarea { font-size: 16px !important; }
+          .header-inner { padding: 0 12px !important; }
         }
       `}</style>
 
       {/* Header */}
       <header style={{ borderBottom: "1px solid var(--border)", background: "white", position: "sticky", top: 0, zIndex: 100 }}>
-        <div style={{ maxWidth: 860, margin: "0 auto", padding: "0 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div className="header-inner" style={{ maxWidth: 860, margin: "0 auto", padding: "0 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ padding: "18px 0", display: "flex", alignItems: "center", gap: 12 }}>
             <div>
               <span style={{ fontSize: 22, fontWeight: 300, letterSpacing: "-0.01em" }}>the weekly</span>
