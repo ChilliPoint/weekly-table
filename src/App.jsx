@@ -87,7 +87,17 @@ export default function App() {
   const [shoppingAdjustments, setShoppingAdjustments] = useState({});
 
   const recipes = store.recipes || [];
-  const calendarPlan = store.calendarPlan || {}; // { "Mon-breakfast": { recipeId, servings }, ... }
+  const calendarPlan = store.calendarPlan || {};
+  const extrasBefore = store.extrasBefore || [];
+  const extrasAfter = store.extrasAfter || [];
+
+  function setExtrasBefore(updater) {
+    setStore(s => ({ ...s, extrasBefore: typeof updater === "function" ? updater(s.extrasBefore || []) : updater }));
+  }
+
+  function setExtrasAfter(updater) {
+    setStore(s => ({ ...s, extrasAfter: typeof updater === "function" ? updater(s.extrasAfter || []) : updater }));
+  }
 
   function upsertRecipe(recipe) {
     setStore(s => {
@@ -275,6 +285,10 @@ export default function App() {
           <PlannerView
             recipes={recipes}
             calendarPlan={calendarPlan}
+            extrasBefore={extrasBefore}
+            extrasAfter={extrasAfter}
+            onSetExtrasBefore={setExtrasBefore}
+            onSetExtrasAfter={setExtrasAfter}
             onSetSlot={setCalendarSlot}
             onClearSlots={clearCalendarSlots}
             onServings={updateCalendarServings}
@@ -521,11 +535,9 @@ function nextDayName(extrasAfter) {
   return ALL_WEEK_DAYS[(baseIdx + extrasAfter.length) % 7];
 }
 
-function PlannerView({ recipes, calendarPlan, onSetSlot, onClearSlots, onServings, onGoShopping }) {
+function PlannerView({ recipes, calendarPlan, extrasBefore, extrasAfter, onSetExtrasBefore, onSetExtrasAfter, onSetSlot, onClearSlots, onServings, onGoShopping }) {
   const [picker, setPicker] = useState(null);
   const [previewRecipe, setPreviewRecipe] = useState(null);
-  const [extrasBefore, setExtrasBefore] = useState([]);
-  const [extrasAfter, setExtrasAfter] = useState([]);
   const totalMeals = Object.keys(calendarPlan).length;
 
   const allDays = [...extrasBefore, ...DAYS, ...extrasAfter];
@@ -533,32 +545,31 @@ function PlannerView({ recipes, calendarPlan, onSetSlot, onClearSlots, onServing
   function addDayBefore() {
     const name = prevDayName(extrasBefore);
     const key = `before-${extrasBefore.length}-${name}`;
-    setExtrasBefore(prev => [key, ...prev]);
+    onSetExtrasBefore(prev => [key, ...prev]);
   }
 
   function addDayAfter() {
     const name = nextDayName(extrasAfter);
     const key = `after-${extrasAfter.length}-${name}`;
-    setExtrasAfter(prev => [...prev, key]);
+    onSetExtrasAfter(prev => [...prev, key]);
   }
 
   function removeDayBefore() {
     const key = extrasBefore[0];
     onClearSlots(MEALS.map(meal => slotKey(key, meal)));
-    setExtrasBefore(prev => prev.slice(1));
+    onSetExtrasBefore(prev => prev.slice(1));
   }
 
   function removeDayAfter() {
     const key = extrasAfter[extrasAfter.length - 1];
     onClearSlots(MEALS.map(meal => slotKey(key, meal)));
-    setExtrasAfter(prev => prev.slice(0, -1));
+    onSetExtrasAfter(prev => prev.slice(0, -1));
   }
 
   function clearAll() {
-    // Wipe every slot in the store — core week and any lingering extra day slots
     onClearSlots(Object.keys(calendarPlan));
-    setExtrasBefore([]);
-    setExtrasAfter([]);
+    onSetExtrasBefore([]);
+    onSetExtrasAfter([]);
   }
 
   function displayName(dayKey) {
